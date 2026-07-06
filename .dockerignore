@@ -1,0 +1,12 @@
+node_modules
+dist
+tests
+.git
+.oxlintrc.json
+walkthrough.md
+implementation_plan.md
+task.md
+CORTEX_*.log
+*.spec.ts
+*.test.ts
+*.test.tsx
