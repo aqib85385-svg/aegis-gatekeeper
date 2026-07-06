@@ -140,7 +140,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ));
     }
 
-    const result = await response.json();
+    const result = (await response.json()) as any;
     console.log('[DEBUG] Gemini response JSON parsed successfully.');
 
     const modelText = result.candidates?.[0]?.content?.parts?.[0]?.text;
