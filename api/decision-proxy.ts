@@ -31,6 +31,8 @@ You must output a JSON object containing exactly the following keys. No markdown
 `;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  console.log('[DEBUG] Incoming Request Method:', req.method);
+
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -41,20 +43,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   );
 
   if (req.method === 'OPTIONS') {
+    console.log('[DEBUG] CORS Preflight OPTIONS Request detected. Returning 200.');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
+    console.log(`[DEBUG] Method ${req.method} not allowed. Early return 405.`);
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
   const { image, text, telemetry } = req.body;
+  console.log('[DEBUG] Request Payload parsed:', {
+    hasImage: !!image,
+    textLength: text?.length ?? 0,
+    telemetry
+  });
 
   const apiKey = process.env.GEMINI_API_KEY;
+  console.log('[DEBUG] Verification: process.env.GEMINI_API_KEY status:', {
+    exists: !!apiKey,
+    length: apiKey ? apiKey.length : 0
+  });
+
   if (!apiKey) {
-    console.error('Missing GEMINI_API_KEY environment variable.');
-    // Fall back to a local processing error status so client triggers its local fallback
-    return res.status(500).json({ error: 'API Key not configured on host server.' });
+    console.error('[DEBUG] [Line 54] Missing GEMINI_API_KEY environment variable. Early return 500.');
+    return res.status(500).json({ 
+      error: 'API Key not configured on host server.', 
+      exception: 'Environment variable GEMINI_API_KEY is undefined or empty.' 
+    });
   }
 
   try {
@@ -64,7 +80,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     ];
 
-    // Append base64 image data if present
     if (image) {
       parts.push({
         inlineData: {
@@ -75,6 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    console.log('[DEBUG] Fetching Gemini API url:', `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=REDACTED_${apiKey.length}`);
 
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -89,25 +105,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     });
 
+    console.log('[DEBUG] Gemini upstream response status:', response.status, 'ok:', response.ok);
+
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Google API error:', errText);
-      return res.status(response.status).json({ error: 'Upstream model service error' });
+      console.error('[DEBUG] [Line 92] Upstream Gemini API error:', errText);
+      return res.status(response.status).json({ 
+        error: 'Upstream model service error',
+        exception: `Upstream returned status ${response.status}: ${errText}`
+      });
     }
 
     const result = await response.json();
+    console.log('[DEBUG] Gemini response JSON parsed successfully.');
+
     const modelText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    console.log('[DEBUG] Extracted candidate modelText:', modelText ? modelText.substring(0, 100) + '...' : 'undefined');
 
     if (!modelText) {
+      console.error('[DEBUG] [Line 101] Empty response from model candidate.');
       throw new Error('Empty response from model candidate');
     }
 
-    // Parse the JSON string from the model output and return it
     const decisionData = JSON.parse(modelText.trim());
+    console.log('[DEBUG] Final parsed decision structure:', decisionData);
     return res.status(200).json(decisionData);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Serverless function execution failure:', error);
-    return res.status(500).json({ error: 'Failed to process decision request: ' + errorMessage });
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('[DEBUG] [Catch Block] Thrown exception caught:', errorMessage, errorStack);
+    return res.status(500).json({ 
+      error: 'Failed to process decision request: ' + errorMessage,
+      exception: errorMessage,
+      stack: errorStack
+    });
   }
 }

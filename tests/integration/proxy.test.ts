@@ -205,7 +205,7 @@ describe('Aegis GateKeeper Secure Proxy Handler', () => {
     await handler(req, res);
 
     expect(statusMock).toHaveBeenCalledWith(403);
-    expect(jsonMock).toHaveBeenCalledWith({ error: 'Upstream model service error' });
+    expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({ error: 'Upstream model service error' }));
   });
 
   it('should return a 500 status when the upstream response candidates are empty', async () => {
@@ -262,8 +262,8 @@ describe('Aegis GateKeeper Secure Proxy Handler', () => {
     await handler(req, res);
 
     expect(statusMock).toHaveBeenCalledWith(500);
-    expect(jsonMock).toHaveBeenCalledWith({
+    expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
       error: 'Failed to process decision request: Connection timed out.'
-    });
+    }));
   });
 });

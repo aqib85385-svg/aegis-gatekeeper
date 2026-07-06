@@ -43,12 +43,27 @@ You must output a JSON object containing exactly the following keys. No markdown
 
 // 3. API Proxy Endpoint (handles Gemini key authentication on GCP)
 app.post('/api/decision-proxy', async (req, res) => {
+  console.log('[DEBUG] Incoming Request Method:', req.method);
+  
   const { image, text, telemetry } = req.body;
+  console.log('[DEBUG] Request Payload parsed:', {
+    hasImage: !!image,
+    textLength: text?.length ?? 0,
+    telemetry
+  });
 
   const apiKey = process.env.GEMINI_API_KEY;
+  console.log('[DEBUG] Verification: process.env.GEMINI_API_KEY status:', {
+    exists: !!apiKey,
+    length: apiKey ? apiKey.length : 0
+  });
+
   if (!apiKey) {
-    console.error('Missing GEMINI_API_KEY environment variable.');
-    return res.status(500).json({ error: 'API Key not configured on Google Cloud Run server.' });
+    console.error('[DEBUG] [Line 49] Missing GEMINI_API_KEY environment variable. Early return 500.');
+    return res.status(500).json({ 
+      error: 'API Key not configured on Google Cloud Run server.',
+      exception: 'Environment variable GEMINI_API_KEY is undefined or empty.'
+    });
   }
 
   try {
@@ -68,6 +83,7 @@ app.post('/api/decision-proxy', async (req, res) => {
     }
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    console.log('[DEBUG] Fetching Gemini API url:', `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=REDACTED_${apiKey.length}`);
 
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -82,25 +98,40 @@ app.post('/api/decision-proxy', async (req, res) => {
       })
     });
 
+    console.log('[DEBUG] Gemini upstream response status:', response.status, 'ok:', response.ok);
+
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Google API error:', errText);
-      return res.status(response.status).json({ error: 'Upstream model service error' });
+      console.error('[DEBUG] [Line 85] Upstream Gemini API error:', errText);
+      return res.status(response.status).json({ 
+        error: 'Upstream model service error',
+        exception: `Upstream returned status ${response.status}: ${errText}`
+      });
     }
 
     const result = await response.json();
+    console.log('[DEBUG] Gemini response JSON parsed successfully.');
+
     const modelText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    console.log('[DEBUG] Extracted candidate modelText:', modelText ? modelText.substring(0, 100) + '...' : 'undefined');
 
     if (!modelText) {
+      console.error('[DEBUG] [Line 94] Empty response from model candidate.');
       throw new Error('Empty response from model candidate');
     }
 
     const decisionData = JSON.parse(modelText.trim());
+    console.log('[DEBUG] Final parsed decision structure:', decisionData);
     return res.status(200).json(decisionData);
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('Server execution failure:', error);
-    return res.status(500).json({ error: 'Failed to process decision request: ' + errorMessage });
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('[DEBUG] [Catch Block] Thrown exception caught:', errorMessage, errorStack);
+    return res.status(500).json({ 
+      error: 'Failed to process decision request: ' + errorMessage,
+      exception: errorMessage,
+      stack: errorStack
+    });
   }
 });
 
