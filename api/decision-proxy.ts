@@ -1,4 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { applySecurityHeaders } from './security';
+import { formatError } from './errorHelper';
 
 // System prompt instructing Gemini to behave as the Aegis GateKeeper Decision Engine
 const SYSTEM_PROMPT = `
@@ -50,11 +52,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   );
 
   // HTTP Security Headers
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none';");
+  applySecurityHeaders(res);
 
   if (req.method === 'OPTIONS') {
     console.log('[DEBUG] CORS Preflight OPTIONS Request detected. Returning 200.');
@@ -63,7 +61,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method !== 'POST') {
     console.log(`[DEBUG] Method ${req.method} not allowed. Early return 405.`);
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json(formatError('Method not allowed'));
   }
 
   const { image, text, telemetry } = req.body;
@@ -76,7 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Base64 payload structure checks to prevent malformed requests
   if (image && (typeof image !== 'string' || image.trim() === '' || !/^[A-Za-z0-9+/=]+$/.test(image.replace(/\s/g, '')))) {
     console.error('[DEBUG] Invalid image format. Rejecting request 400.');
-    return res.status(400).json({ error: 'Invalid image format: Must be a valid Base64 payload.' });
+    return res.status(400).json(formatError('Invalid image format: Must be a valid Base64 payload.'));
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -87,10 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!apiKey) {
     console.error('[DEBUG] [Line 54] Missing GEMINI_API_KEY environment variable. Early return 500.');
-    return res.status(500).json({ 
-      error: 'API Key not configured on host server.', 
-      exception: 'Environment variable GEMINI_API_KEY is undefined or empty.' 
-    });
+    return res.status(500).json(formatError(
+      'API Key not configured on host server.',
+      'Environment variable GEMINI_API_KEY is undefined or empty.'
+    ));
   }
 
   const controller = new AbortController();
@@ -136,10 +134,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!response.ok) {
       const errText = await response.text();
       console.error('[DEBUG] [Line 92] Upstream Gemini API error:', errText);
-      return res.status(response.status).json({ 
-        error: 'Upstream model service error',
-        exception: `Upstream returned status ${response.status}: ${errText}`
-      });
+      return res.status(response.status).json(formatError(
+        'Upstream model service error',
+        `Upstream returned status ${response.status}: ${errText}`
+      ));
     }
 
     const result = await response.json();
@@ -161,10 +159,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
     console.error('[DEBUG] [Catch Block] Thrown exception caught:', errorMessage, errorStack);
-    return res.status(500).json({ 
-      error: 'Failed to process decision request: ' + errorMessage,
-      exception: errorMessage,
-      stack: errorStack
-    });
+    return res.status(500).json(formatError(
+      'Failed to process decision request: ' + errorMessage,
+      errorMessage,
+      errorStack
+    ));
   }
 }

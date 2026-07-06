@@ -1,6 +1,9 @@
+import './scripts/verify-env.js';
 import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { applySecurityHeaders, applyFallbackSecurityHeaders } from './api/security.js';
+import { formatError } from './api/errorHelper.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,11 +48,7 @@ app.post('/api/decision-proxy', async (req, res) => {
   console.log('[DEBUG] Incoming Request Method:', req.method);
 
   // Set HTTP security headers
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none';");
+  applySecurityHeaders(res);
   
   const { image, text, telemetry } = req.body;
   console.log('[DEBUG] Request Payload parsed:', {
@@ -61,7 +60,7 @@ app.post('/api/decision-proxy', async (req, res) => {
   // Base64 payload structure checks to prevent malformed requests
   if (image && (typeof image !== 'string' || image.trim() === '' || !/^[A-Za-z0-9+/=]+$/.test(image.replace(/\s/g, '')))) {
     console.error('[DEBUG] Invalid image format. Rejecting request 400.');
-    return res.status(400).json({ error: 'Invalid image format: Must be a valid Base64 payload.' });
+    return res.status(400).json(formatError('Invalid image format: Must be a valid Base64 payload.'));
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
@@ -72,11 +71,14 @@ app.post('/api/decision-proxy', async (req, res) => {
 
   if (!apiKey) {
     console.error('[DEBUG] [Line 49] Missing GEMINI_API_KEY environment variable. Early return 500.');
-    return res.status(500).json({ 
-      error: 'API Key not configured on Google Cloud Run server.',
-      exception: 'Environment variable GEMINI_API_KEY is undefined or empty.'
-    });
+    return res.status(500).json(formatError(
+      'API Key not configured on Google Cloud Run server.',
+      'Environment variable GEMINI_API_KEY is undefined or empty.'
+    ));
   }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
 
   try {
     const parts = [
@@ -96,9 +98,6 @@ app.post('/api/decision-proxy', async (req, res) => {
 
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
     console.log('[DEBUG] Fetching Gemini API url:', `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=REDACTED_${apiKey.length}`);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
 
     const response = await fetch(geminiUrl, {
       method: 'POST',
@@ -121,10 +120,10 @@ app.post('/api/decision-proxy', async (req, res) => {
     if (!response.ok) {
       const errText = await response.text();
       console.error('[DEBUG] [Line 85] Upstream Gemini API error:', errText);
-      return res.status(response.status).json({ 
-        error: 'Upstream model service error',
-        exception: `Upstream returned status ${response.status}: ${errText}`
-      });
+      return res.status(response.status).json(formatError(
+        'Upstream model service error',
+        `Upstream returned status ${response.status}: ${errText}`
+      ));
     }
 
     const result = await response.json();
@@ -149,20 +148,16 @@ app.post('/api/decision-proxy', async (req, res) => {
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
     console.error('[DEBUG] [Catch Block] Thrown exception caught:', errorMessage, errorStack);
-    return res.status(500).json({ 
-      error: 'Failed to process decision request: ' + errorMessage,
-      exception: errorMessage,
-      stack: errorStack
-    });
+    return res.status(500).json(formatError(
+      'Failed to process decision request: ' + errorMessage,
+      errorMessage,
+      errorStack
+    ));
   }
 });
 
 app.use((req, res) => {
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com; frame-ancestors 'none';");
+  applyFallbackSecurityHeaders(res);
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 

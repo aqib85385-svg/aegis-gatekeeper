@@ -18,6 +18,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   const [streamActive, setStreamActive] = useState<boolean>(false);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [processing, setProcessing] = useState<boolean>(false);
+  const [announcement, setAnnouncement] = useState<string>('');
 
   // Clean up camera stream on unmount
   useEffect(() => {
@@ -41,6 +42,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     if (!videoRef.current) return;
     try {
       setProcessing(true);
+      setAnnouncement('Starting camera stream...');
       const stream = await cameraService.startCamera(videoRef.current);
       if (!isMountedRef.current) {
         stream.getTracks().forEach(track => track.stop());
@@ -48,10 +50,12 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       }
       setStreamActive(true);
       setCapturedPreview(null);
+      setAnnouncement('Camera stream active. Align your ticket or item in the viewport.');
       onReset();
     } catch (err) {
       if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : String(err);
+      setAnnouncement(`Failed to start camera: ${errorMessage}`);
       onError(new Error(errorMessage || 'Permission denied or camera in use.'));
     } finally {
       if (isMountedRef.current) {
@@ -64,6 +68,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     cameraService.stopCamera();
     setStreamActive(false);
     setCapturedPreview(null);
+    setAnnouncement('Camera stream stopped.');
     onReset();
   };
 
@@ -72,6 +77,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
     try {
       setProcessing(true);
+      setAnnouncement('Capturing and compressing image scan...');
       
       // 1. Trigger the off-thread crop/grayscale/compress pipeline
       const compressedBlob = await cameraService.captureAndProcess(videoRef.current);
@@ -84,12 +90,14 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       // 3. Create a local URL for the compressed image to display to the volunteer
       const localUrl = URL.createObjectURL(compressedBlob);
       setCapturedPreview(localUrl);
+      setAnnouncement('Image snapshot successfully compressed and updated.');
 
       // 4. Pass the compressed blob and preview URL back to the controller
       onCaptureSuccess(compressedBlob, localUrl);
     } catch (err) {
       if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : String(err);
+      setAnnouncement(`Failed to capture image scan: ${errorMessage}`);
       onError(new Error(errorMessage || 'Failed to capture frame.'));
     } finally {
       if (isMountedRef.current) {
@@ -100,6 +108,9 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
 
   return (
     <div className="camera-capture-container" aria-label="Incident Scan Camera">
+      <div style={{ position: 'absolute', width: '1px', height: '1px', padding: 0, margin: '-1px', overflow: 'hidden', clip: 'rect(0, 0, 0, 0)', border: 0 }} aria-live="polite" role="status">
+        {announcement}
+      </div>
       <div className="video-viewport">
         {/* Live Video Stream View */}
         <video
