@@ -79,13 +79,15 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
     <div className="camera-capture-container" aria-label="Incident Scan Camera">
       <div className="video-viewport">
         {/* Live Video Stream View */}
-        {streamActive && !capturedPreview && (
-          <video
-            ref={videoRef}
-            className="video-feed"
-            aria-label="Live camera preview"
-          />
-        )}
+        <video
+          ref={videoRef}
+          className="video-feed"
+          aria-label="Live camera preview"
+          autoPlay
+          playsInline
+          muted
+          style={{ display: streamActive && !capturedPreview ? 'block' : 'none' }}
+        />
 
         {/* Dynamic Scan Target Grid Overlay (Visible when streaming) */}
         {streamActive && !capturedPreview && (

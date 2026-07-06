@@ -6,14 +6,25 @@ export class CameraService {
   private activeStream: MediaStream | null = null;
   private worker: Worker | null = null;
 
-  /**
-   * Initializes and starts the camera stream on the target video element.
-   */
   public async startCamera(videoElement: HTMLVideoElement): Promise<MediaStream> {
     this.stopCamera(); // Make sure any existing stream is cleaned up
 
+    // 1. Verify HTTPS / Secure Context requirements
+    if (typeof window !== 'undefined' && window.location) {
+      const isSecure = window.location.protocol === 'https:' || 
+                       window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1';
+      if (!isSecure) {
+        throw new Error('Camera access is blocked over non-secure HTTP. Please deploy over HTTPS or use localhost.');
+      }
+    }
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error('Media Devices API is not supported or blocked in this browser context.');
+    }
+
     // Request back camera on mobile if available, otherwise default to front/default
-    const constraints: MediaStreamConstraints = {
+    const primaryConstraints: MediaStreamConstraints = {
       video: {
         facingMode: 'environment', // Rear-facing camera for scanning tickets/bags
         width: { ideal: 1280 },
@@ -23,19 +34,39 @@ export class CameraService {
     };
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(primaryConstraints);
       videoElement.srcObject = stream;
       
       // Force play for iOS devices
       videoElement.setAttribute('playsinline', 'true');
       videoElement.setAttribute('autoplay', 'true');
-      videoElement.play().catch(err => console.warn('Autoplay failed, user gesture required:', err));
+      await videoElement.play();
       
       this.activeStream = stream;
       return stream;
-    } catch (error) {
-      console.error('Camera stream initialization failed:', error);
-      throw error;
+    } catch (primaryError) {
+      console.warn('Environment camera constraints failed, retrying with fallback generic constraints:', primaryError);
+      
+      const fallbackConstraints: MediaStreamConstraints = {
+        video: true,
+        audio: false
+      };
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+        videoElement.srcObject = stream;
+        
+        videoElement.setAttribute('playsinline', 'true');
+        videoElement.setAttribute('autoplay', 'true');
+        await videoElement.play();
+        
+        this.activeStream = stream;
+        return stream;
+      } catch (fallbackError) {
+        const errorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        console.error('All camera initialization constraints failed:', errorMessage);
+        throw new Error(errorMessage || 'Failed to acquire camera permissions.');
+      }
     }
   }
 
