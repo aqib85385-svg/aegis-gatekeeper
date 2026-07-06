@@ -49,6 +49,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version'
   );
 
+  // HTTP Security Headers
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none';");
+
   if (req.method === 'OPTIONS') {
     console.log('[DEBUG] CORS Preflight OPTIONS Request detected. Returning 200.');
     return res.status(200).end();

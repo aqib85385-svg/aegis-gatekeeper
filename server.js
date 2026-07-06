@@ -41,9 +41,15 @@ You must output a JSON object containing exactly the following keys. No markdown
 }
 `;
 
-// 3. API Proxy Endpoint (handles Gemini key authentication on GCP)
 app.post('/api/decision-proxy', async (req, res) => {
   console.log('[DEBUG] Incoming Request Method:', req.method);
+
+  // Set HTTP security headers
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none';");
   
   const { image, text, telemetry } = req.body;
   console.log('[DEBUG] Request Payload parsed:', {
@@ -135,8 +141,12 @@ app.post('/api/decision-proxy', async (req, res) => {
   }
 });
 
-// 4. Catch-all middleware to serve Single Page Application (SPA) routing
 app.use((req, res) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://generativelanguage.googleapis.com; frame-ancestors 'none';");
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
