@@ -28,7 +28,11 @@ class AiService {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => {
-        const result = reader.result as string;
+        const result = reader.result;
+        if (typeof result !== 'string') {
+          reject(new Error('FileReader result is not a valid string.'));
+          return;
+        }
         // Strip the data:image/*;base64, prefix
         const base64Data = result.split(',')[1] || '';
         resolve(base64Data);
@@ -60,6 +64,9 @@ class AiService {
       return this.generateMockResponse(volunteerText, telemetry);
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout
+
     try {
       // Prepare payload properties
       let imageBase64 = '';
@@ -77,8 +84,11 @@ class AiService {
           image: imageBase64,
           text: volunteerText,
           telemetry
-        })
+        }),
+        signal: controller.signal
       });
+
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
         throw new Error(`API returned status ${response.status}`);
@@ -89,6 +99,7 @@ class AiService {
       // 4. Validate output shape using strict Zod parser contract
       return safeParseDecision(json);
     } catch (error) {
+      clearTimeout(timeoutId);
       console.warn('Backend proxy lookup failed, dropping back to local AI fallback:', error);
       // 5. Safe recovery: trigger mock fallback to prevent gate blockage
       return this.generateMockResponse(volunteerText, telemetry);

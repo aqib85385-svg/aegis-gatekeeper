@@ -73,6 +73,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     telemetry
   });
 
+  // Base64 payload structure checks to prevent malformed requests
+  if (image && (typeof image !== 'string' || image.trim() === '' || !/^[A-Za-z0-9+/=]+$/.test(image.replace(/\s/g, '')))) {
+    console.error('[DEBUG] Invalid image format. Rejecting request 400.');
+    return res.status(400).json({ error: 'Invalid image format: Must be a valid Base64 payload.' });
+  }
+
   const apiKey = process.env.GEMINI_API_KEY;
   console.log('[DEBUG] Verification: process.env.GEMINI_API_KEY status:', {
     exists: !!apiKey,
@@ -86,6 +92,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       exception: 'Environment variable GEMINI_API_KEY is undefined or empty.' 
     });
   }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000); // 10-second timeout
 
   try {
     const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [
@@ -116,8 +125,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         generationConfig: {
           responseMimeType: 'application/json'
         }
-      })
+      }),
+      signal: controller.signal
     });
+
+    clearTimeout(timeoutId);
 
     console.log('[DEBUG] Gemini upstream response status:', response.status, 'ok:', response.ok);
 
@@ -145,6 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('[DEBUG] Final parsed decision structure:', decisionData);
     return res.status(200).json(decisionData);
   } catch (error) {
+    clearTimeout(timeoutId);
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
     console.error('[DEBUG] [Catch Block] Thrown exception caught:', errorMessage, errorStack);

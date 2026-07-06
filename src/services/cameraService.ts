@@ -114,8 +114,12 @@ export class CameraService {
           }
 
           // 4. Set up message handler for worker output
+          let resolvedOrRejected = false;
+
           const onMessage = (event: MessageEvent) => {
-            // Clean up the handler to prevent memory leaks/multiple triggers
+            if (resolvedOrRejected) return;
+            resolvedOrRejected = true;
+            clearTimeout(workerTimeout);
             this.worker?.removeEventListener('message', onMessage);
             this.worker?.removeEventListener('error', onError);
 
@@ -128,10 +132,21 @@ export class CameraService {
           };
 
           const onError = (event: ErrorEvent) => {
+            if (resolvedOrRejected) return;
+            resolvedOrRejected = true;
+            clearTimeout(workerTimeout);
             this.worker?.removeEventListener('message', onMessage);
             this.worker?.removeEventListener('error', onError);
             reject(new Error(`Worker error: ${event.message}`));
           };
+
+          const workerTimeout = setTimeout(() => {
+            if (resolvedOrRejected) return;
+            resolvedOrRejected = true;
+            this.worker?.removeEventListener('message', onMessage);
+            this.worker?.removeEventListener('error', onError);
+            reject(new Error('Web Worker compression request timed out.'));
+          }, 5000); // 5s safety timeout
 
           this.worker.addEventListener('message', onMessage);
           this.worker.addEventListener('error', onError);

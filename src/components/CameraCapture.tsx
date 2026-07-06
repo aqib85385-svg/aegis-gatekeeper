@@ -14,30 +14,49 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
   onError
 }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const isMountedRef = useRef<boolean>(true);
   const [streamActive, setStreamActive] = useState<boolean>(false);
   const [capturedPreview, setCapturedPreview] = useState<string | null>(null);
   const [processing, setProcessing] = useState<boolean>(false);
 
   // Clean up camera stream on unmount
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
+      isMountedRef.current = false;
       cameraService.stopCamera();
     };
   }, []);
+
+  // Revoke previous object URLs when the preview changes to avoid memory leaks
+  useEffect(() => {
+    return () => {
+      if (capturedPreview) {
+        URL.revokeObjectURL(capturedPreview);
+      }
+    };
+  }, [capturedPreview]);
 
   const handleStartCamera = async () => {
     if (!videoRef.current) return;
     try {
       setProcessing(true);
-      await cameraService.startCamera(videoRef.current);
+      const stream = await cameraService.startCamera(videoRef.current);
+      if (!isMountedRef.current) {
+        stream.getTracks().forEach(track => track.stop());
+        return;
+      }
       setStreamActive(true);
       setCapturedPreview(null);
       onReset();
     } catch (err) {
+      if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : String(err);
       onError(new Error(errorMessage || 'Permission denied or camera in use.'));
     } finally {
-      setProcessing(false);
+      if (isMountedRef.current) {
+        setProcessing(false);
+      }
     }
   };
 
@@ -56,6 +75,7 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       
       // 1. Trigger the off-thread crop/grayscale/compress pipeline
       const compressedBlob = await cameraService.captureAndProcess(videoRef.current);
+      if (!isMountedRef.current) return;
       
       // 2. Stop camera stream immediately to conserve power and freeze view
       cameraService.stopCamera();
@@ -68,10 +88,13 @@ export const CameraCapture: React.FC<CameraCaptureProps> = ({
       // 4. Pass the compressed blob and preview URL back to the controller
       onCaptureSuccess(compressedBlob, localUrl);
     } catch (err) {
+      if (!isMountedRef.current) return;
       const errorMessage = err instanceof Error ? err.message : String(err);
       onError(new Error(errorMessage || 'Failed to capture frame.'));
     } finally {
-      setProcessing(false);
+      if (isMountedRef.current) {
+        setProcessing(false);
+      }
     }
   };
 
