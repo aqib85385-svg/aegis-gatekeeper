@@ -2,6 +2,61 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { applySecurityHeaders } from './security.js';
 import { formatError } from './errorHelper.js';
 
+interface CacheEntry {
+  response: any;
+  timestamp: number;
+}
+
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const requestCache = new Map<string, CacheEntry>();
+
+function hashString(str: string | null | undefined): string {
+  if (!str) return 'empty';
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return hash.toString(16);
+}
+
+function getCachedResponse(image: string | null | undefined, text: string | null | undefined, telemetry: any): any {
+  const imageHash = hashString(image);
+  const textHash = hashString(text);
+  const key = `${textHash}:${imageHash}:${telemetry?.queueMinutes ?? 0}:${telemetry?.timeToKickoff ?? 0}`;
+  
+  const now = Date.now();
+  if (requestCache.has(key)) {
+    const entry = requestCache.get(key);
+    if (entry && now - entry.timestamp < CACHE_TTL_MS) {
+      console.log('[DEBUG] Cache hit for key:', key);
+      return entry.response;
+    } else {
+      console.log('[DEBUG] Cache expired for key:', key);
+      requestCache.delete(key);
+    }
+  }
+  return null;
+}
+
+function setCachedResponse(image: string | null | undefined, text: string | null | undefined, telemetry: any, response: any): void {
+  const imageHash = hashString(image);
+  const textHash = hashString(text);
+  const key = `${textHash}:${imageHash}:${telemetry?.queueMinutes ?? 0}:${telemetry?.timeToKickoff ?? 0}`;
+  
+  if (requestCache.size >= 500) {
+    const firstKey = requestCache.keys().next().value;
+    if (firstKey) requestCache.delete(firstKey);
+  }
+  
+  requestCache.set(key, {
+    response,
+    timestamp: Date.now()
+  });
+  console.log('[DEBUG] Cache set for key:', key);
+}
+
 // System prompt instructing Gemini to behave as the Aegis GateKeeper Decision Engine
 const SYSTEM_PROMPT = `
 You are the Aegis GateKeeper Decision Engine for the FIFA World Cup 2026.
@@ -70,6 +125,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     textLength: text?.length ?? 0,
     telemetry
   });
+
+  const cachedResponse = getCachedResponse(image, text, telemetry);
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
 
   // Base64 payload structure checks to prevent malformed requests
   if (image && (typeof image !== 'string' || image.trim() === '' || !/^[A-Za-z0-9+/=]+$/.test(image.replace(/\s/g, '')))) {
@@ -153,6 +213,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const decisionData = JSON.parse(modelText.trim());
     console.log('[DEBUG] Final parsed decision structure:', decisionData);
+    setCachedResponse(image, text, telemetry, decisionData);
     return res.status(200).json(decisionData);
   } catch (error) {
     clearTimeout(timeoutId);

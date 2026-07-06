@@ -8,6 +8,72 @@ import { formatError } from './api/errorHelper.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// In-memory request cache
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const requestCache = new Map();
+
+function hashString(str) {
+  if (!str) return 'empty';
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash |= 0;
+  }
+  return hash.toString(16);
+}
+
+function getCachedResponse(image, text, telemetry) {
+  const imageHash = hashString(image);
+  const textHash = hashString(text);
+  const key = `${textHash}:${imageHash}:${telemetry?.queueMinutes ?? 0}:${telemetry?.timeToKickoff ?? 0}`;
+  
+  const now = Date.now();
+  if (requestCache.has(key)) {
+    const entry = requestCache.get(key);
+    if (now - entry.timestamp < CACHE_TTL_MS) {
+      console.log('[DEBUG] Cache hit for key:', key);
+      return entry.response;
+    } else {
+      console.log('[DEBUG] Cache expired for key:', key);
+      requestCache.delete(key);
+    }
+  }
+  return null;
+}
+
+function setCachedResponse(image, text, telemetry, response) {
+  const imageHash = hashString(image);
+  const textHash = hashString(text);
+  const key = `${textHash}:${imageHash}:${telemetry?.queueMinutes ?? 0}:${telemetry?.timeToKickoff ?? 0}`;
+  
+  if (requestCache.size >= 500) {
+    const firstKey = requestCache.keys().next().value;
+    if (firstKey) requestCache.delete(firstKey);
+  }
+  
+  requestCache.set(key, {
+    response,
+    timestamp: Date.now()
+  });
+  console.log('[DEBUG] Cache set for key:', key);
+}
+
+// Expired entries cleanup timer
+if (typeof setInterval !== 'undefined') {
+  const interval = setInterval(() => {
+    const now = Date.now();
+    for (const [key, entry] of requestCache.entries()) {
+      if (now - entry.timestamp >= CACHE_TTL_MS) {
+        requestCache.delete(key);
+      }
+    }
+  }, 60000);
+  if (interval && typeof interval.unref === 'function') {
+    interval.unref();
+  }
+}
+
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
@@ -56,6 +122,11 @@ app.post('/api/decision-proxy', async (req, res) => {
     textLength: text?.length ?? 0,
     telemetry
   });
+
+  const cachedResponse = getCachedResponse(image, text, telemetry);
+  if (cachedResponse) {
+    return res.status(200).json(cachedResponse);
+  }
 
   // Base64 payload structure checks to prevent malformed requests
   if (image && (typeof image !== 'string' || image.trim() === '' || !/^[A-Za-z0-9+/=]+$/.test(image.replace(/\s/g, '')))) {
@@ -139,6 +210,7 @@ app.post('/api/decision-proxy', async (req, res) => {
 
     const decisionData = JSON.parse(modelText.trim());
     console.log('[DEBUG] Final parsed decision structure:', decisionData);
+    setCachedResponse(image, text, telemetry, decisionData);
     return res.status(200).json(decisionData);
   } catch (error) {
     // If the timeout is defined, clear it to avoid resource leaks
