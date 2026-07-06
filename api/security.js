@@ -1,4 +1,4 @@
-export function applySecurityHeaders(res: any): void {
+export function applySecurityHeaders(res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -6,7 +6,7 @@ export function applySecurityHeaders(res: any): void {
   res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none';");
 }
 
-export function applyFallbackSecurityHeaders(res: any): void {
+export function applyFallbackSecurityHeaders(res) {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');

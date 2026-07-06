@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { applySecurityHeaders } from './security';
-import { formatError } from './errorHelper';
+import { applySecurityHeaders } from './security.js';
+import { formatError } from './errorHelper.js';
 
 // System prompt instructing Gemini to behave as the Aegis GateKeeper Decision Engine
 const SYSTEM_PROMPT = `
