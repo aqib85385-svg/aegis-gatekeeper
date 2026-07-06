@@ -35,7 +35,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Origin', '*');
+  const origin = (req.headers?.origin || '') as string;
+  const isAllowedOrigin = 
+    origin.startsWith('http://localhost:') ||
+    origin.startsWith('http://127.0.0.1:') ||
+    origin.endsWith('.run.app') ||
+    origin.endsWith('.vercel.app') ||
+    origin === '';
+  res.setHeader('Access-Control-Allow-Origin', (isAllowedOrigin && origin) ? origin : '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',

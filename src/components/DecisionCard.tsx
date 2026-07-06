@@ -85,7 +85,7 @@ export const DecisionCard: React.FC<DecisionCardProps> = ({ decision, loading })
         </div>
 
         <div className="section-block fan-translation-block">
-          <h3 className="section-label">SPANISH TRANSLATION (FAN VIEW)</h3>
+          <h3 className="section-label">Fan Translation (Demo: Spanish)</h3>
           <p className="translation-text" lang="es">
             "{translation}"
           </p>

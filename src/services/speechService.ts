@@ -4,6 +4,19 @@
  */
 
 class SpeechService {
+  private cachedVoices: SpeechSynthesisVoice[] = [];
+
+  constructor() {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      // 1. Load voices initially (synchronous in some browsers)
+      this.cachedVoices = window.speechSynthesis.getVoices();
+
+      // 2. Bind listener for asynchronous loading on browser thread startup
+      window.speechSynthesis.onvoiceschanged = () => {
+        this.cachedVoices = window.speechSynthesis.getVoices();
+      };
+    }
+  }
 
   /**
    * Speaks the provided text in the target language.
@@ -28,8 +41,8 @@ class SpeechService {
       utterance.rate = 1.0; 
       utterance.pitch = 1.0;
 
-      // Find an appropriate voice for the requested language if available
-      const voices = window.speechSynthesis.getVoices();
+      // Find an appropriate voice from cache or direct query if cache is empty
+      const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
       const voice = voices.find(v => v.lang.startsWith(lang)) || voices.find(v => v.lang.includes(lang.split('-')[0]));
       if (voice) {
         utterance.voice = voice;

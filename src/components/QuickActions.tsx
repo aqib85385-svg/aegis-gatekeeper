@@ -5,7 +5,7 @@ interface QuickActionsProps {
   onSelectAction: (text: string) => void;
 }
 
-export const QuickActions: React.FC<QuickActionsProps> = ({ onSelectAction }) => {
+export const QuickActions: React.FC<QuickActionsProps> = React.memo(({ onSelectAction }) => {
   const actions = [
     {
       label: 'Ticket Redirect Check',
@@ -48,6 +48,6 @@ export const QuickActions: React.FC<QuickActionsProps> = ({ onSelectAction }) =>
       </div>
     </div>
   );
-};
+});
 
 export default QuickActions;

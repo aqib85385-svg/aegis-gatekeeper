@@ -17,7 +17,7 @@ interface SimulationPanelProps {
   onChangeTelemetry: (queue: number, kickoff: number, offline: boolean) => void;
 }
 
-export const SimulationPanel: React.FC<SimulationPanelProps> = ({
+export const SimulationPanel: React.FC<SimulationPanelProps> = React.memo(({
   currentQueue,
   currentTimeToKickoff,
   isOfflineMode,
@@ -120,7 +120,7 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
                 onChange={(e) => onChangeTelemetry(currentQueue, currentTimeToKickoff, e.target.checked)}
               />
               <span className="checkbox-text">
-                {isOfflineMode ? <SignalZero size={14} className="icon-offline" /> : <Signal size={14} className="icon-online" />}
+                {isOfflineMode ? <SignalZero size={14} className="icon-offline" aria-hidden="true" /> : <Signal size={14} className="icon-online" aria-hidden="true" />}
                 Force Offline Mode
               </span>
             </label>
@@ -129,6 +129,6 @@ export const SimulationPanel: React.FC<SimulationPanelProps> = ({
       </div>
     </div>
   );
-};
+});
 
 export default SimulationPanel;

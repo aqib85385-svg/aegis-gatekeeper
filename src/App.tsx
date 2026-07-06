@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { ShieldCheck, AlertCircle, VolumeX } from 'lucide-react';
 import CameraCapture from './components/CameraCapture';
 import DecisionCard from './components/DecisionCard';
@@ -28,24 +28,28 @@ export const App: React.FC = () => {
     aiService.setMockMode(isOfflineMode);
   }, [isOfflineMode]);
 
-  const handleCaptureSuccess = (blob: Blob, _url: string) => {
+  const handleCaptureSuccess = useCallback((blob: Blob, _url: string) => {
     setCapturedBlob(blob);
     setError(null);
-  };
+  }, []);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setCapturedBlob(null);
     setDecision(null);
     setError(null);
     setLoading(false);
     speechService.cancel();
-  };
+  }, []);
 
-  const handleTelemetryChange = (queue: number, kickoff: number, offline: boolean) => {
+  const handleTelemetryChange = useCallback((queue: number, kickoff: number, offline: boolean) => {
     setQueueMinutes(queue);
     setTimeToKickoff(kickoff);
     setIsOfflineMode(offline);
-  };
+  }, []);
+
+  const handleQuickActionSelect = useCallback((text: string) => {
+    setVolunteerText(text);
+  }, []);
 
   const handleRunAnalysis = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -98,7 +102,7 @@ export const App: React.FC = () => {
         {/* Left Side: Inputs & Scanner Controls */}
         <section className="input-section" aria-label="Scan Controls">
           <div className="section-header">
-            <h2 className="section-title">Incident Capture Console</h2>
+            <h2 className="section-title">Gate Operations Console</h2>
           </div>
 
           <div className="card-container">
@@ -125,7 +129,7 @@ export const App: React.FC = () => {
               </div>
 
               {/* Quick Preset Buttons */}
-              <QuickActions onSelectAction={(text) => setVolunteerText(text)} />
+              <QuickActions onSelectAction={handleQuickActionSelect} />
 
               {/* Trigger Button */}
               <div className="action-buttons-row">
@@ -133,9 +137,9 @@ export const App: React.FC = () => {
                   type="submit"
                   className="btn-primary"
                   disabled={loading}
-                  aria-label="Submit scan and context for AI decision"
+                  aria-label="Assess fan situation and context for tournament decision"
                 >
-                  {loading ? 'Evaluating Rules...' : 'Submit to AI Engine'}
+                  {loading ? 'Checking Tournament Policies...' : 'Assess Fan Situation'}
                 </button>
                 {(capturedBlob || volunteerText) && (
                   <button
