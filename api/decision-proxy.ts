@@ -173,7 +173,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
     console.log('[DEBUG] Fetching Gemini API url:', geminiUrl);
 
-    const response = await fetch(geminiUrl, {
+    let response = await fetch(geminiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -187,6 +187,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }),
       signal: controller.signal
     });
+
+    if (response.status >= 500) {
+      console.warn('[DEBUG] Transient Gemini upstream error, status:', response.status, '. Retrying once...');
+      response = await fetch(geminiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey
+        },
+        body: JSON.stringify({
+          contents: [{ parts }],
+          generationConfig: {
+            responseMimeType: 'application/json'
+          }
+        }),
+        signal: controller.signal
+      });
+    }
 
     clearTimeout(timeoutId);
 
