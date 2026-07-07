@@ -1,5 +1,6 @@
 import './scripts/verify-env.js';
 import express from 'express';
+import compression from 'compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { applySecurityHeaders, applyFallbackSecurityHeaders } from './api/security.js';
@@ -75,10 +76,17 @@ if (typeof setInterval !== 'undefined') {
 }
 
 const app = express();
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
 // 1. Serves static production assets compiled by Vite
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'dist'), {
+  setHeaders: (res, filePath) => {
+    if (/[\\/]assets[\\/]/.test(filePath)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  }
+}));
 
 // 2. Upstream Gemini API System Prompt
 const SYSTEM_PROMPT = `
