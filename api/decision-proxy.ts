@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { applySecurityHeaders } from './security.js';
 import { formatError } from './errorHelper.js';
+import { metricsContainer } from './metricsCounter.js';
 
 interface CacheEntry {
   response: any;
@@ -88,6 +89,7 @@ You must output a JSON object containing exactly the following keys. No markdown
 `;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  metricsContainer.decisionProxyRequests++;
   console.log('[DEBUG] Incoming Request Method:', req.method);
 
   // Enable CORS

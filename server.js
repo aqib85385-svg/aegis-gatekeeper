@@ -9,6 +9,8 @@ import { formatError } from './api/errorHelper.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+let decisionProxyRequestCount = 0;
+
 // In-memory request cache
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const requestCache = new Map();
@@ -128,7 +130,25 @@ You must output a JSON object containing exactly the following keys. No markdown
 }
 `;
 
+app.get('/api/health', (req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get('/api/metrics', (req, res) => {
+  res.status(200).json({
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    decisionProxyRequests: decisionProxyRequestCount,
+    scope: 'process'
+  });
+});
+
 app.post('/api/decision-proxy', async (req, res) => {
+  decisionProxyRequestCount++;
   console.log('[DEBUG] Incoming Request Method:', req.method);
   
   const { image, text, telemetry } = req.body;

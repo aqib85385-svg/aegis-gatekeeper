@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import handler from '../../api/decision-proxy';
+import healthHandler from '../../api/health';
+import metricsHandler from '../../api/metrics';
 
 describe('Aegis GateKeeper Secure Proxy Handler', () => {
   beforeEach(() => {
@@ -265,5 +267,76 @@ describe('Aegis GateKeeper Secure Proxy Handler', () => {
     expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
       error: 'Failed to process decision request: Connection timed out.'
     }));
+  });
+
+  // ==========================================
+  // 4. HEALTH & METRICS ENDPOINT TESTS
+  // ==========================================
+
+  it('should return a 200 status and correct JSON for GET /api/health', async () => {
+    const req = { method: 'GET' } as unknown as VercelRequest;
+    const jsonMock = vi.fn();
+    const statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    const res = {
+      setHeader: vi.fn(),
+      status: statusMock
+    } as unknown as VercelResponse;
+
+    await healthHandler(req, res);
+
+    expect(statusMock).toHaveBeenCalledWith(200);
+    expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'ok',
+      uptime: expect.any(Number),
+      timestamp: expect.any(String)
+    }));
+  });
+
+  it('should reject non-GET requests to /api/health with 405', async () => {
+    const req = { method: 'POST' } as unknown as VercelRequest;
+    const jsonMock = vi.fn();
+    const statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    const res = {
+      setHeader: vi.fn(),
+      status: statusMock
+    } as unknown as VercelResponse;
+
+    await healthHandler(req, res);
+
+    expect(statusMock).toHaveBeenCalledWith(405);
+  });
+
+  it('should return a 200 status and correct JSON for GET /api/metrics', async () => {
+    const req = { method: 'GET' } as unknown as VercelRequest;
+    const jsonMock = vi.fn();
+    const statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    const res = {
+      setHeader: vi.fn(),
+      status: statusMock
+    } as unknown as VercelResponse;
+
+    await metricsHandler(req, res);
+
+    expect(statusMock).toHaveBeenCalledWith(200);
+    expect(jsonMock).toHaveBeenCalledWith(expect.objectContaining({
+      uptime: expect.any(Number),
+      memory: expect.any(Object),
+      decisionProxyRequestsThisInstance: expect.any(Number),
+      scope: 'per-instance'
+    }));
+  });
+
+  it('should reject non-GET requests to /api/metrics with 405', async () => {
+    const req = { method: 'POST' } as unknown as VercelRequest;
+    const jsonMock = vi.fn();
+    const statusMock = vi.fn().mockReturnValue({ json: jsonMock });
+    const res = {
+      setHeader: vi.fn(),
+      status: statusMock
+    } as unknown as VercelResponse;
+
+    await metricsHandler(req, res);
+
+    expect(statusMock).toHaveBeenCalledWith(405);
   });
 });
