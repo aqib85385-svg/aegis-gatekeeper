@@ -76,6 +76,16 @@ if (typeof setInterval !== 'undefined') {
 }
 
 const app = express();
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    applySecurityHeaders(res);
+  } else {
+    applyFallbackSecurityHeaders(res);
+  }
+  next();
+});
+
 app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 
@@ -120,9 +130,6 @@ You must output a JSON object containing exactly the following keys. No markdown
 
 app.post('/api/decision-proxy', async (req, res) => {
   console.log('[DEBUG] Incoming Request Method:', req.method);
-
-  // Set HTTP security headers
-  applySecurityHeaders(res);
   
   const { image, text, telemetry } = req.body;
   console.log('[DEBUG] Request Payload parsed:', {
@@ -256,7 +263,6 @@ app.post('/api/decision-proxy', async (req, res) => {
 });
 
 app.use((req, res) => {
-  applyFallbackSecurityHeaders(res);
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
