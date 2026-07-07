@@ -2,6 +2,8 @@
 
 Aegis GateKeeper is a secure, privacy-first, and highly accessible real-time operational decision engine designed for tournament volunteers at stadium entry turnstiles during the FIFA World Cup 2026.
 
+**Live demo:** [https://aegis-gatekeeper-59191111914.us-central1.run.app/](https://aegis-gatekeeper-59191111914.us-central1.run.app/)
+
 ---
 
 ## 1. What problem does this solve?
@@ -124,6 +126,17 @@ To execute Playwright E2E scenario testing:
 ```bash
 npx playwright test
 ```
+
+### Measured Coverage & Performance Metrics
+*   **Vitest Test Coverage (v8):**
+    *   Statements: 86.8%
+    *   Branches: 80.73%
+    *   Functions: 84.44%
+    *   Lines: 89.5%
+*   **Lighthouse Performance Audit (Live Cloud Run URL):**
+    *   Performance: 97/100
+    *   Accessibility: 100/100
+    *   Best Practices: 100/100
 
 ---
 
