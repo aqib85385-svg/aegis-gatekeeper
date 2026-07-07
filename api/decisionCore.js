@@ -147,7 +147,7 @@ export async function processDecision(body, platformName) {
       });
     }
 
-    const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent';
+    const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
     console.log('[DEBUG] Fetching Gemini API url:', geminiUrl);
 
     let response = await fetch(geminiUrl, {
