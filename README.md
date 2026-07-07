@@ -66,6 +66,13 @@ Standard rule-based check-in systems fail when encountering unstructured physica
 5.  **LLM Reasoning:** Gemini 1.5 Flash processes the rules and returns a structured JSON payload.
 6.  **Schema Check & Render:** The app runs a Zod parser schema validation. It updates the UI with an action-first directive card (`ALLOW`, `REVIEW`, or `DENY`) and plays the translated Spanish instructions using the Web Speech API.
 
+### Deterministic Decision Engine Architecture
+To ensure high-safety margins and prevent generative AI hallucinations on critical rules, Aegis GateKeeper decouples rule reasoning from narrative phrasing:
+*   **Decoupled Rule Reasoning:** The decision status (`ALLOW` | `REVIEW` | `DENY`) and the required volunteer action are computed by a pure, deterministic function (`evaluateBaggage` in [decisionEngine.ts](src/services/decisionEngine.ts)), not by the LLM.
+*   **Constrained LLM Role:** The LLM's role is strictly constrained to generating the natural-language explanation and translation framing on top of the already-determined outcome.
+*   **Code-Enforced Overrides:** When a deterministic rule matches (e.g., diaper bag flask detection, ticket screenshots, or gate queue surge redirects), its status and action code override the LLM's returned values.
+*   **Direct Unit Testing:** This boundary is unit-tested directly: [decisionEngine.test.ts](tests/unit/decisionEngine.test.ts) covers every rule branch synchronously with no mock dependencies, and [aiService.test.ts](tests/unit/aiService.test.ts) asserts override and pass-through behavior with a mocked LLM response.
+
 ---
 
 ## 4. How do I run the project?
