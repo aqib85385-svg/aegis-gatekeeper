@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Aegis GateKeeper E2E Volunteer Incident Resolution Workflow', () => {
-  test('should process a diaper bag incident scan and output ALLOW status', async ({ page }) => {
+  test('should process a diaper bag incident scan and output REVIEW status due to flask presence', async ({ page }) => {
     // 1. Navigate to the application route
     await page.goto('/');
 
@@ -25,17 +25,17 @@ test.describe('Aegis GateKeeper E2E Volunteer Incident Resolution Workflow', () 
     const submitButton = page.locator('button[type="submit"]');
     await submitButton.click();
 
-    // 5. Verify the Decision Card renders the resulting ALLOW status directive
+    // 5. Verify the Decision Card renders the resulting REVIEW status directive
     const decisionCard = page.locator('.decision-card');
     await expect(decisionCard).toBeVisible();
-    await expect(decisionCard).toHaveClass(/status-allow/);
+    await expect(decisionCard).toHaveClass(/status-review/);
 
     // Verify specific visual text
     const statusLabel = decisionCard.locator('.status-label');
-    await expect(statusLabel).toContainText('Allow Entry');
+    await expect(statusLabel).toContainText('Manual Review');
 
     const actionTitle = decisionCard.locator('.action-title');
-    await expect(actionTitle).toContainText('APPLY GREEN TAG & ADMIT');
+    await expect(actionTitle).toContainText('EMPTY FLASK & TAG DIAPER BAG');
 
     // 6. Test the Web Speech Audio triggers
     const speakButton = decisionCard.locator('.btn-speak');
