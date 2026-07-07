@@ -1,6 +1,7 @@
 import { safeParseDecision } from '../utils/schema';
 import type { DecisionResponse } from '../utils/schema';
 import { checkLocalPolicy } from './policyEngine';
+import { evaluateBaggage } from './decisionEngine';
 
 interface TelemetryData {
   queueMinutes: number;
@@ -59,6 +60,9 @@ class AiService {
       return policyResult;
     }
 
+    // Call evaluateBaggage() first to get the deterministic status/action/reason
+    const deterministic = evaluateBaggage(volunteerText, telemetry);
+
     // 2. Direct request to simulation mock engine if enabled
     if (this.useMockFallback) {
       return this.generateMockResponse(volunteerText, telemetry);
@@ -74,6 +78,9 @@ class AiService {
         imageBase64 = await this.blobToBase64(imageBlob);
       }
 
+      // Prepend the pre-determined outcome as context to guide the LLM's explanation/translation
+      const contextText = `[PRE-DETERMINED DECISION: ${deterministic.status}, REQUIRED ACTION: ${deterministic.action}] ${volunteerText}`;
+
       // 3. Post to the secure Vercel API endpoint
       const response = await fetch('/api/decision-proxy', {
         method: 'POST',
@@ -82,7 +89,7 @@ class AiService {
         },
         body: JSON.stringify({
           image: imageBase64,
-          text: volunteerText,
+          text: contextText,
           telemetry
         }),
         signal: controller.signal
@@ -97,7 +104,30 @@ class AiService {
       const json = await response.json();
       
       // 4. Validate output shape using strict Zod parser contract
-      return safeParseDecision(json);
+      const validated = safeParseDecision(json);
+
+      // If schema validation failed and returned the safety fallback, preserve it
+      if (validated.action === 'Manual Review Needed') {
+        return validated;
+      }
+
+      // If a specific deterministic rule was matched, override the LLM response.
+      // This enforces safety constraints for known operational guidelines (e.g., flask presence).
+      if (deterministic.action !== 'APPROVE FOR STANDARD ENTRY') {
+        return {
+          ...validated,
+          status: deterministic.status,
+          action: deterministic.action
+        };
+      }
+
+      // [Option B: Intentional LLM Autonomy for Unmatched Cases]
+      // If no deterministic rule fired, we allow the validated LLM response to stand.
+      // This is intentional and safe: the LLM functions as a general-purpose semantic classifier
+      // to identify other complex or unmodeled issues (e.g., verifying custom tickets, general questions,
+      // or detecting safety/policy violations not represented in simple keyword lists) that require
+      // flexibility beyond hardcoded bypass rules.
+      return validated;
     } catch (error) {
       clearTimeout(timeoutId);
       console.warn('Backend proxy lookup failed, dropping back to local AI fallback:', error);
@@ -111,70 +141,40 @@ class AiService {
    * Matches core dynamic problem profiles.
    */
   public generateMockResponse(text: string, telemetry: TelemetryData): DecisionResponse {
-    const query = text.toLowerCase();
+    const decision = evaluateBaggage(text, telemetry);
 
-    // Case 1: Overloaded Gate Redirect Case
-    if (query.includes('gate') || query.includes('crowd') || query.includes('queue')) {
-      if (telemetry.queueMinutes > 15 && telemetry.timeToKickoff < 30) {
-        return {
-          status: 'REVIEW',
-          action: 'REDIRECT TO GATE D',
-          explanation: `Gate wait time is ${telemetry.queueMinutes}m and kickoff is in ${telemetry.timeToKickoff}m. Override ticket gate allocation and route to Gate D under FIFA Ops Manual Sec 4.2.`,
-          translation: 'Por favor, diríjase a la Puerta D. Hay menos de 2 minutos de espera.'
-        };
-      }
-      return {
-        status: 'ALLOW',
-        action: 'PROCEED TO TURNSTILE',
-        explanation: 'Gate is busy but within acceptable throughput parameters.',
-        translation: 'Adelante por los molinetes.'
-      };
+    // Get corresponding Spanish translation
+    let translation = 'Puede pasar. Disfrute del partido.';
+    switch (decision.action) {
+      case 'REDIRECT TO GATE D':
+        translation = 'Por favor, diríjase a la Puerta D. Hay menos de 2 minutos de espera.';
+        break;
+      case 'PROCEED TO TURNSTILE':
+        translation = 'Adelante por los molinetes.';
+        break;
+      case 'EMPTY FLASK & TAG DIAPER BAG':
+        translation = 'Vacíe el termo de metal. Su bolso de bebé está aprobado.';
+        break;
+      case 'APPLY GREEN TAG & ADMIT':
+        translation = 'Su bolso de bebé está aprobado para ingresar.';
+        break;
+      case 'SHOW SECTOR 200 MAP':
+        translation = 'Suba por las escaleras mecánicas del sector 200, están a la derecha.';
+        break;
+      case 'SEND TO TICKET RESOLUTION':
+        translation = 'No se aceptan capturas de pantalla. Vaya a la taquilla de resolución de tickets.';
+        break;
+      case 'APPROVE FOR STANDARD ENTRY':
+      default:
+        translation = 'Puede pasar. Disfrute del partido.';
+        break;
     }
 
-    // Case 2: Diaper / Care Bag Exemption Case
-    if (query.includes('bag') || query.includes('diaper') || query.includes('child') || query.includes('baby')) {
-      if (query.includes('flask') || query.includes('metal') || query.includes('thermos')) {
-        return {
-          status: 'REVIEW',
-          action: 'EMPTY FLASK & TAG DIAPER BAG',
-          explanation: 'Baggage is approved under the FIFA Childcare Exemption rule, but the metal flask must be emptied before entering the stadium.',
-          translation: 'Vacíe el termo de metal. Su bolso de bebé está aprobado.'
-        };
-      }
-      return {
-        status: 'ALLOW',
-        action: 'APPLY GREEN TAG & ADMIT',
-        explanation: 'Diaper bag conforms to childcare dimension guidelines.',
-        translation: 'Su bolso de bebé está aprobado para ingresar.'
-      };
-    }
-
-    // Case 3: Language Barrier Assistance Case
-    if (query.includes('where') || query.includes('sector') || query.includes('seat')) {
-      return {
-        status: 'ALLOW',
-        action: 'SHOW SECTOR 200 MAP',
-        explanation: 'Fan seeking directions to upper bowl sectors. Standard route is escalators by Gate B.',
-        translation: 'Suba por las escaleras mecánicas del sector 200, están a la derecha.'
-      };
-    }
-
-    // Case 4: Invalid/Static Ticket Screenshot
-    if (query.includes('screenshot') || query.includes('photo ticket') || query.includes('dead phone')) {
-      return {
-        status: 'DENY',
-        action: 'SEND TO TICKET RESOLUTION',
-        explanation: 'Ticket shows a static barcode image (screenshot). Stadium access requires dynamic QR validation. Route to Customer Service.',
-        translation: 'No se aceptan capturas de pantalla. Vaya a la taquilla de resolución de tickets.'
-      };
-    }
-
-    // Default Case
     return {
-      status: 'ALLOW',
-      action: 'APPROVE FOR STANDARD ENTRY',
-      explanation: 'No prohibited items detected, ticket is valid, and gate parameters are within limits.',
-      translation: 'Puede pasar. Disfrute del partido.'
+      status: decision.status,
+      action: decision.action,
+      explanation: decision.reason,
+      translation
     };
   }
 }

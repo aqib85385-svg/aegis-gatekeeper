@@ -218,4 +218,68 @@ describe('Aegis GateKeeper AI Service', () => {
     expect(result.status).toBe('REVIEW');
     expect(result.action).toBe('Manual Review Needed');
   });
+
+  // ==========================================
+  // 4. REFRACTORED DECISION LOGIC OVERRIDE TESTS
+  // ==========================================
+
+  it('should override LLM response with deterministic status/action when a rule matches', async () => {
+    const mockLlmResponse = {
+      status: 'ALLOW',
+      action: 'Admit Fan',
+      explanation: 'Ticket checks passed.',
+      translation: 'Pase.'
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockLlmResponse
+    });
+    global.fetch = fetchMock;
+
+    // This query contains 'screenshot', triggering deterministic DENY
+    const result = await aiService.analyzeGateIncident(null, 'ticket screenshot copy', { queueMinutes: 2, timeToKickoff: 45 });
+    expect(result.status).toBe('DENY');
+    expect(result.action).toBe('SEND TO TICKET RESOLUTION');
+  });
+
+  it('should pass through LLM response when no deterministic rules are matched', async () => {
+    const mockLlmResponse = {
+      status: 'ALLOW',
+      action: 'Admit Fan Custom Action',
+      explanation: 'Ticket checks passed.',
+      translation: 'Pase.'
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockLlmResponse
+    });
+    global.fetch = fetchMock;
+
+    // Normal query with no rules matched
+    const result = await aiService.analyzeGateIncident(null, 'standard fan admission check', { queueMinutes: 2, timeToKickoff: 45 });
+    expect(result.status).toBe('ALLOW');
+    expect(result.action).toBe('Admit Fan Custom Action');
+  });
+
+  it('should preserve safety fallback when schema validation contract fails in unmatched cases', async () => {
+    const invalidSchemaResponse = {
+      status: 'INVALID_STATUS_ENUM', // Fails Zod validation
+      action: 'Admit',
+      explanation: 'Ticket OK'
+      // translation is missing!
+    };
+
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => invalidSchemaResponse
+    });
+    global.fetch = fetchMock;
+
+    // A query with no deterministic matches but invalid schema
+    const result = await aiService.analyzeGateIncident(null, 'standard ticket query', { queueMinutes: 2, timeToKickoff: 45 });
+    expect(result.status).toBe('REVIEW');
+    expect(result.action).toBe('Manual Review Needed');
+  });
 });
