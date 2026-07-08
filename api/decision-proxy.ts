@@ -3,7 +3,7 @@ import { applySecurityHeaders } from './security.js';
 import { formatError } from './errorHelper.js';
 import { metricsContainer } from './metricsCounter.js';
 import { processDecision } from './decisionCore.js';
-import { checkRateLimit } from './rateLimiter.js';
+import { applyRateLimitGuard } from './rateLimitGuard.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   metricsContainer.decisionProxyRequests++;
@@ -39,13 +39,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const ip = ((req.headers?.['x-forwarded-for'] || req.headers?.['x-real-ip'] || '127.0.0.1') as string).toString().split(',')[0].trim();
-  const limitResult = checkRateLimit(ip, 20, 60000);
-  if (!limitResult.allowed) {
-    const retrySeconds = Math.ceil(limitResult.retryAfterMs / 1000);
-    res.setHeader('Retry-After', retrySeconds.toString());
-    return res.status(429).json(
-      formatError('Too Many Requests', `Rate limit exceeded. Please try again in ${retrySeconds} seconds.`)
-    );
+  const limitGuard = applyRateLimitGuard(ip);
+  if (limitGuard) {
+    res.setHeader('Retry-After', limitGuard.retryAfterSeconds.toString());
+    return res.status(limitGuard.status).json(limitGuard.body);
   }
 
   const result = await processDecision(req.body, 'Vercel serverless function');

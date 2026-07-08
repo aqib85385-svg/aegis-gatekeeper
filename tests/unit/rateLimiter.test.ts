@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { checkRateLimit, resetRateLimits } from '../../api/rateLimiter.js';
+import { applyRateLimitGuard } from '../../api/rateLimitGuard.js';
 
 describe('checkRateLimit sliding-window tests', () => {
   beforeEach(() => {
@@ -77,5 +78,35 @@ describe('checkRateLimit sliding-window tests', () => {
     const afterReset = checkRateLimit(key, 20, 60000, now);
     expect(afterReset.allowed).toBe(true);
     expect(afterReset.remaining).toBe(19);
+  });
+});
+
+describe('applyRateLimitGuard wrapper tests', () => {
+  beforeEach(() => {
+    resetRateLimits();
+  });
+
+  it('should return null when the request is allowed', () => {
+    const res = applyRateLimitGuard('192.168.1.1', 5, 60000);
+    expect(res).toBeNull();
+  });
+
+  it('should return 429 payload structure when the request is rate-limited', () => {
+    const key = '10.0.0.1';
+    
+    // Send 5 requests to hit limit
+    for (let i = 0; i < 5; i++) {
+      applyRateLimitGuard(key, 5, 60000);
+    }
+    
+    // 6th request is blocked
+    const res = applyRateLimitGuard(key, 5, 60000);
+    expect(res).not.toBeNull();
+    expect(res?.status).toBe(429);
+    expect(res?.retryAfterSeconds).toBe(60);
+    expect(res?.body).toEqual({
+      error: 'Too Many Requests',
+      exception: 'Rate limit exceeded. Please try again in 60 seconds.'
+    });
   });
 });
