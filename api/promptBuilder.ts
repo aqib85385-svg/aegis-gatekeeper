@@ -27,8 +27,30 @@ You must output a JSON object containing exactly the following keys. No markdown
 }
 `;
 
-export function buildPromptParts(text, telemetry, image) {
-  const parts = [
+export interface TelemetryData {
+  queueMinutes?: number;
+  timeToKickoff?: number;
+}
+
+export interface TextPart {
+  text: string;
+}
+
+export interface InlineDataPart {
+  inlineData: {
+    mimeType: string;
+    data: string;
+  };
+}
+
+export type GeminiPart = TextPart | InlineDataPart;
+
+export function buildPromptParts(
+  text: string | undefined,
+  telemetry: TelemetryData | undefined,
+  image: string | undefined
+): GeminiPart[] {
+  const parts: GeminiPart[] = [
     {
       text: `${SYSTEM_PROMPT}\n\nVOLUNTEER DESCRIPTION: "${text || 'No description provided.'}"\n\nTELEMETRY:\n- Current Queue Wait Time: ${telemetry?.queueMinutes ?? 0} minutes\n- Time to Kickoff: ${telemetry?.timeToKickoff ?? 60} minutes`
     }

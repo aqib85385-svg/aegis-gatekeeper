@@ -1,7 +1,17 @@
 import { checkRateLimit } from './rateLimiter.js';
-import { formatError } from './errorHelper.js';
+import { formatError, type FormattedError } from './errorHelper.js';
 
-export function applyRateLimitGuard(ip, maxRequests = 20, windowMs = 60000) {
+export interface RateLimitGuardResult {
+  status: number;
+  retryAfterSeconds: number;
+  body: FormattedError;
+}
+
+export function applyRateLimitGuard(
+  ip: string,
+  maxRequests: number = 20,
+  windowMs: number = 60000
+): RateLimitGuardResult | null {
   const result = checkRateLimit(ip, maxRequests, windowMs);
   if (result.allowed) return null;
   

@@ -1,4 +1,8 @@
-export function applySecurityHeaders(res) {
+export interface SecureResponse {
+  setHeader(name: string, value: string): void;
+}
+
+export function applySecurityHeaders(res: SecureResponse): void {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
@@ -6,7 +10,7 @@ export function applySecurityHeaders(res) {
   res.setHeader('Content-Security-Policy', "default-src 'self'; frame-ancestors 'none';");
 }
 
-export function applyFallbackSecurityHeaders(res) {
+export function applyFallbackSecurityHeaders(res: SecureResponse): void {
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');

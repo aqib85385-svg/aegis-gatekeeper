@@ -1,11 +1,22 @@
-const ipRequests = new Map();
+const ipRequests = new Map<string, number[]>();
 
-export function checkRateLimit(key, maxRequests, windowMs, now = Date.now()) {
+export interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
+  retryAfterMs: number;
+}
+
+export function checkRateLimit(
+  key: string,
+  maxRequests: number,
+  windowMs: number,
+  now: number = Date.now()
+): RateLimitResult {
   let timestamps = ipRequests.get(key) || [];
   
   // Filter out expired timestamps
   const windowStart = now - windowMs;
-  timestamps = timestamps.filter(t => t > windowStart);
+  timestamps = timestamps.filter((t: number) => t > windowStart);
   
   if (timestamps.length < maxRequests) {
     timestamps.push(now);
@@ -28,6 +39,6 @@ export function checkRateLimit(key, maxRequests, windowMs, now = Date.now()) {
   };
 }
 
-export function resetRateLimits() {
+export function resetRateLimits(): void {
   ipRequests.clear();
 }

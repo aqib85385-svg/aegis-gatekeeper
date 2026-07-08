@@ -4,21 +4,25 @@ import { formatError } from './errorHelper.js';
 import { metricsContainer } from './metricsCounter.js';
 import { processDecision } from './decisionCore.js';
 import { applyRateLimitGuard } from './rateLimitGuard.js';
+import { logger } from './logger.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   metricsContainer.decisionProxyRequests++;
-  console.log('[INFO] Incoming Request Method:', req.method);
+  logger.info('incoming_request_method', req.method);
 
   // Enable CORS
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
   const origin = (req.headers?.origin || '') as string;
   const isAllowedOrigin = 
     origin.startsWith('http://localhost:') ||
     origin.startsWith('http://127.0.0.1:') ||
     origin.endsWith('.run.app') ||
-    origin.endsWith('.vercel.app') ||
-    origin === '';
-  res.setHeader('Access-Control-Allow-Origin', (isAllowedOrigin && origin) ? origin : '*');
+    origin.endsWith('.vercel.app');
+
+  if (origin && isAllowedOrigin) {
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader(
     'Access-Control-Allow-Headers',
@@ -29,12 +33,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   applySecurityHeaders(res);
 
   if (req.method === 'OPTIONS') {
-    console.log('[INFO] CORS Preflight OPTIONS Request detected. Returning 200.');
+    logger.info('cors_preflight_options');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    console.log(`[INFO] Method ${req.method} not allowed. Early return 405.`);
+    logger.info('method_not_allowed', req.method);
     return res.status(405).json(formatError('Method not allowed'));
   }
 

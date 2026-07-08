@@ -4,12 +4,12 @@ import compression from 'compression';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { applySecurityHeaders, applyFallbackSecurityHeaders } from './api/security.js';
+import { processDecision } from './api/decisionCore.js';
+import { applyRateLimitGuard } from './api/rateLimitGuard.js';
+import { logger } from './api/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-import { processDecision } from './api/decisionCore.js';
-import { applyRateLimitGuard } from './api/rateLimitGuard.js';
 
 let decisionProxyRequestCount = 0;
 
@@ -35,8 +35,6 @@ app.use(express.static(path.join(__dirname, 'dist'), {
     }
   }
 }));
-
-
 
 app.get('/api/health', (req, res) => {
   res.status(200).json({
@@ -76,5 +74,5 @@ app.use((req, res) => {
 
 const port = process.env.PORT || 8080;
 app.listen(port, () => {
-  console.log(`Aegis GateKeeper running on port ${port}`);
+  logger.info(`Aegis GateKeeper running on port ${port}`);
 });

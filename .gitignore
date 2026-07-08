@@ -26,3 +26,11 @@ dist-ssr
 # Testing coverage reports
 coverage/
 test-results/
+
+# Compiled API JavaScript files
+api/*.js
+vite.config.js
+
+# Scratch scripts
+scratch/
+
