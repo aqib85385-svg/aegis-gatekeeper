@@ -6,7 +6,7 @@ import { processDecision } from './decisionCore.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   metricsContainer.decisionProxyRequests++;
-  console.log('[DEBUG] Incoming Request Method:', req.method);
+  console.log('[INFO] Incoming Request Method:', req.method);
 
   // Enable CORS
   res.setHeader('Access-Control-Allow-Credentials', 'true');
@@ -28,12 +28,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   applySecurityHeaders(res);
 
   if (req.method === 'OPTIONS') {
-    console.log('[DEBUG] CORS Preflight OPTIONS Request detected. Returning 200.');
+    console.log('[INFO] CORS Preflight OPTIONS Request detected. Returning 200.');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    console.log(`[DEBUG] Method ${req.method} not allowed. Early return 405.`);
+    console.log(`[INFO] Method ${req.method} not allowed. Early return 405.`);
     return res.status(405).json(formatError('Method not allowed'));
   }
 

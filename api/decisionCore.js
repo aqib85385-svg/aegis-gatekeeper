@@ -24,10 +24,10 @@ function getCachedResponse(image, text, telemetry) {
   if (requestCache.has(key)) {
     const entry = requestCache.get(key);
     if (entry && now - entry.timestamp < CACHE_TTL_MS) {
-      console.log('[DEBUG] Cache hit for key:', key);
+      console.log('[INFO] Cache hit for key:', key);
       return entry.response;
     } else {
-      console.log('[DEBUG] Cache expired for key:', key);
+      console.log('[INFO] Cache expired for key:', key);
       requestCache.delete(key);
     }
   }
@@ -48,7 +48,7 @@ function setCachedResponse(image, text, telemetry, response) {
     response,
     timestamp: Date.now()
   });
-  console.log('[DEBUG] Cache set for key:', key);
+  console.log('[INFO] Cache set for key:', key);
 }
 
 // Expired entries cleanup timer
@@ -78,7 +78,7 @@ export async function processDecision(body, platformName) {
 
   // Base64 payload structure checks to prevent malformed requests
   if (image && (typeof image !== 'string' || image.trim() === '' || !/^[A-Za-z0-9+/=]+$/.test(image.replace(/\s/g, '')))) {
-    console.error('[DEBUG] Invalid image format. Rejecting request 400.');
+    console.error('[ERROR] Invalid image format. Rejecting request 400.');
     return {
       status: 400,
       data: formatError('Invalid image format: Must be a valid Base64 payload.')
@@ -86,13 +86,13 @@ export async function processDecision(body, platformName) {
   }
 
   const apiKey = process.env.GEMINI_API_KEY;
-  console.log('[DEBUG] Verification: process.env.GEMINI_API_KEY status:', {
+  console.log('[INFO] Verification: process.env.GEMINI_API_KEY status:', {
     exists: !!apiKey,
     length: apiKey ? apiKey.length : 0
   });
 
   if (!apiKey) {
-    console.error('[DEBUG] [Line 49] Missing GEMINI_API_KEY environment variable. Early return 500.');
+    console.error('[ERROR] [Line 49] Missing GEMINI_API_KEY environment variable. Early return 500.');
     return {
       status: 500,
       data: formatError(
@@ -109,7 +109,7 @@ export async function processDecision(body, platformName) {
     const parts = buildPromptParts(text, telemetry, image);
 
     const geminiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
-    console.log('[DEBUG] Fetching Gemini API url:', geminiUrl);
+    console.log('[INFO] Fetching Gemini API url:', geminiUrl);
 
     let response = await fetch(geminiUrl, {
       method: 'POST',
@@ -127,7 +127,7 @@ export async function processDecision(body, platformName) {
     });
 
     if (response.status >= 500) {
-      console.warn('[DEBUG] Transient Gemini upstream error, status:', response.status, '. Retrying once...');
+      console.warn('[WARN] Transient Gemini upstream error, status:', response.status, '. Retrying once...');
       response = await fetch(geminiUrl, {
         method: 'POST',
         headers: {
@@ -146,11 +146,11 @@ export async function processDecision(body, platformName) {
 
     clearTimeout(timeoutId);
 
-    console.log('[DEBUG] Gemini upstream response status:', response.status, 'ok:', response.ok);
+    console.log('[INFO] Gemini upstream response status:', response.status, 'ok:', response.ok);
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('[DEBUG] [Line 85] Upstream Gemini API error:', errText);
+      console.error('[ERROR] [Line 85] Upstream Gemini API error:', errText);
       return {
         status: response.status,
         data: formatError(
@@ -161,18 +161,18 @@ export async function processDecision(body, platformName) {
     }
 
     const result = await response.json();
-    console.log('[DEBUG] Gemini response JSON parsed successfully.');
+    console.log('[INFO] Gemini response JSON parsed successfully.');
 
     const modelText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-    console.log('[DEBUG] Extracted candidate modelText:', modelText ? modelText.substring(0, 100) + '...' : 'undefined');
+    console.log('[INFO] Extracted candidate modelText:', modelText ? modelText.substring(0, 100) + '...' : 'undefined');
 
     if (!modelText) {
-      console.error('[DEBUG] [Line 94] Empty response from model candidate.');
+      console.error('[ERROR] [Line 94] Empty response from model candidate.');
       throw new Error('Empty response from model candidate');
     }
 
     const decisionData = JSON.parse(modelText.trim());
-    console.log('[DEBUG] Final parsed decision structure:', decisionData);
+    console.log('[INFO] Final parsed decision structure:', decisionData);
     setCachedResponse(image, text, telemetry, decisionData);
     return { status: 200, data: decisionData };
   } catch (error) {
@@ -181,7 +181,7 @@ export async function processDecision(body, platformName) {
     }
     const errorMessage = error instanceof Error ? error.message : String(error);
     const errorStack = error instanceof Error ? error.stack : '';
-    console.error('[DEBUG] [Catch Block] Thrown exception caught:', errorMessage, errorStack);
+    console.error('[ERROR] [Catch Block] Thrown exception caught:', errorMessage, errorStack);
     return {
       status: 500,
       data: formatError(
