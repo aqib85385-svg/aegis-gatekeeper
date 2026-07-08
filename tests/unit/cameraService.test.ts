@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { CameraService } from '../../src/services/cameraService';
 
 describe('CameraService', () => {
@@ -200,5 +200,85 @@ describe('CameraService', () => {
     });
 
     await expect(capturePromise).rejects.toThrow('Worker error: Syntax error in worker script');
+  });
+
+  describe('runWorkerJob timeout path (fake timers)', () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    const makeHungWorker = () => {
+      const mockWorker = {
+        postMessage: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn()
+      };
+      // Must use function() so `new Worker(...)` works as a constructor
+      (globalThis as any).Worker = vi.fn().mockImplementation(function() { return mockWorker; });
+      return mockWorker;
+    };
+
+    it('should reject with timeout message when worker never responds', async () => {
+      vi.useFakeTimers();
+      const mockWorker = makeHungWorker();
+
+      const capturePromise = cameraService.captureAndProcess(mockVideo as any);
+      // Attach handler immediately so the rejection is never "unhandled"
+      const rejection = expect(capturePromise).rejects.toThrow(
+        'Web Worker compression request timed out.'
+      );
+
+      // Flush the createImageBitmap microtask so ensureWorker() runs and
+      // listeners are registered before we advance fake timers
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5001);
+
+      await rejection;
+      expect(mockWorker.addEventListener).toHaveBeenCalled();
+    });
+
+    it('should call removeEventListener for both message and error after timeout fires', async () => {
+      vi.useFakeTimers();
+      const mockWorker = makeHungWorker();
+
+      const capturePromise = cameraService.captureAndProcess(mockVideo as any);
+      // Attach early so rejection is handled from the start
+      capturePromise.catch(() => {});
+
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5001);
+      await capturePromise.catch(() => {});
+
+      const removedEvents = mockWorker.removeEventListener.mock.calls.map(
+        (call: any[]) => call[0]
+      );
+      expect(removedEvents).toContain('message');
+      expect(removedEvents).toContain('error');
+    });
+
+    it('should not double-settle when a late message arrives after timeout has fired', async () => {
+      vi.useFakeTimers();
+      const mockWorker = makeHungWorker();
+
+      const capturePromise = cameraService.captureAndProcess(mockVideo as any);
+      // Attach early so rejection is handled from the start
+      const rejection = expect(capturePromise).rejects.toThrow(
+        'Web Worker compression request timed out.'
+      );
+
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(5001);
+      await rejection;
+
+      // Now emit a late message — resolvedOrRejected is already true inside
+      // runWorkerJob so this must be a no-op and must not throw
+      const onMessageCallback = mockWorker.addEventListener.mock.calls.find(
+        (call: any[]) => call[0] === 'message'
+      )?.[1];
+
+      expect(() =>
+        onMessageCallback?.({ data: { success: true, blob: new Blob(['late']) } })
+      ).not.toThrow();
+    });
   });
 });

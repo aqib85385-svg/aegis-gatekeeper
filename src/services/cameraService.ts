@@ -35,14 +35,7 @@ export class CameraService {
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia(primaryConstraints);
-      videoElement.srcObject = stream;
-      
-      // Force play for iOS devices
-      videoElement.setAttribute('playsinline', 'true');
-      videoElement.setAttribute('autoplay', 'true');
-      await videoElement.play();
-      
-      this.activeStream = stream;
+      await this.attachStream(videoElement, stream);
       return stream;
     } catch (primaryError) {
       console.warn('Environment camera constraints failed, retrying with fallback generic constraints:', primaryError);
@@ -54,13 +47,7 @@ export class CameraService {
 
       try {
         const stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-        videoElement.srcObject = stream;
-        
-        videoElement.setAttribute('playsinline', 'true');
-        videoElement.setAttribute('autoplay', 'true');
-        await videoElement.play();
-        
-        this.activeStream = stream;
+        await this.attachStream(videoElement, stream);
         return stream;
       } catch (fallbackError) {
         const errorMessage = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
@@ -68,6 +55,14 @@ export class CameraService {
         throw new Error(errorMessage || 'Failed to acquire camera permissions.');
       }
     }
+  }
+
+  private async attachStream(videoElement: HTMLVideoElement, stream: MediaStream): Promise<void> {
+    videoElement.srcObject = stream;
+    videoElement.setAttribute('playsinline', 'true');
+    videoElement.setAttribute('autoplay', 'true');
+    await videoElement.play();
+    this.activeStream = stream;
   }
 
   /**
@@ -85,89 +80,91 @@ export class CameraService {
    * Processes: Crop to center square -> Resize -> Grayscale -> Compress.
    */
   public captureAndProcess(videoElement: HTMLVideoElement): Promise<Blob> {
+    const videoWidth = videoElement.videoWidth;
+    const videoHeight = videoElement.videoHeight;
+    
+    if (!videoWidth || !videoHeight) {
+      return Promise.reject(new Error('Video stream dimensions are not loaded.'));
+    }
+
+    const geometry = this.computeCropGeometry(videoWidth, videoHeight);
+
+    return createImageBitmap(videoElement)
+      .then(imageBitmap => {
+        const worker = this.ensureWorker();
+        const payload = {
+          imageBitmap,
+          ...geometry
+        };
+        return this.runWorkerJob(worker, payload, [imageBitmap]);
+      })
+      .catch(err => {
+        throw new Error(`createImageBitmap error: ${err.message}`);
+      });
+  }
+
+  private computeCropGeometry(videoWidth: number, videoHeight: number) {
+    const cropSize = Math.floor(Math.min(videoWidth, videoHeight) * 0.70);
+    const cropX = Math.floor((videoWidth - cropSize) / 2);
+    const cropY = Math.floor((videoHeight - cropSize) / 2);
+    return {
+      cropX,
+      cropY,
+      cropWidth: cropSize,
+      cropHeight: cropSize,
+      targetWidth: 300,
+      targetHeight: 300
+    };
+  }
+
+  private ensureWorker(): Worker {
+    if (!this.worker) {
+      this.worker = new Worker(
+        new URL('../workers/imageCompressor.worker.ts', import.meta.url),
+        { type: 'module' }
+      );
+    }
+    return this.worker;
+  }
+
+  private runWorkerJob(worker: Worker, payload: any, transfer: Transferable[]): Promise<Blob> {
     return new Promise((resolve, reject) => {
-      try {
-        const videoWidth = videoElement.videoWidth;
-        const videoHeight = videoElement.videoHeight;
-        
-        if (!videoWidth || !videoHeight) {
-          throw new Error('Video stream dimensions are not loaded.');
+      let resolvedOrRejected = false;
+
+      const cleanup = () => {
+        resolvedOrRejected = true;
+        clearTimeout(workerTimeout);
+        worker.removeEventListener('message', onMessage);
+        worker.removeEventListener('error', onError);
+      };
+
+      const onMessage = (event: MessageEvent) => {
+        if (resolvedOrRejected) return;
+        const { success, blob, error } = event.data;
+        cleanup();
+        if (success && blob) {
+          resolve(blob);
+        } else {
+          reject(new Error(error || 'Worker compression failed.'));
         }
+      };
 
-        // 1. Calculate cropping area (crop to a center square, 70% of shortest dimension)
-        const cropSize = Math.floor(Math.min(videoWidth, videoHeight) * 0.70);
-        const cropX = Math.floor((videoWidth - cropSize) / 2);
-        const cropY = Math.floor((videoHeight - cropSize) / 2);
-        
-        // Target dimensions for upload resizing
-        const targetWidth = 300;
-        const targetHeight = 300;
+      const onError = (event: ErrorEvent) => {
+        if (resolvedOrRejected) return;
+        cleanup();
+        reject(new Error(`Worker error: ${event.message}`));
+      };
 
-        // 2. Capture dynamic bitmap from video stream
-        createImageBitmap(videoElement).then(imageBitmap => {
-          // 3. Lazy-initialize Web Worker
-          if (!this.worker) {
-            this.worker = new Worker(
-              new URL('../workers/imageCompressor.worker.ts', import.meta.url),
-              { type: 'module' }
-            );
-          }
+      const workerTimeout = setTimeout(() => {
+        if (resolvedOrRejected) return;
+        cleanup();
+        reject(new Error('Web Worker compression request timed out.'));
+      }, 5000); // 5s safety timeout
 
-          // 4. Set up message handler for worker output
-          let resolvedOrRejected = false;
+      worker.addEventListener('message', onMessage);
+      worker.addEventListener('error', onError);
 
-          const onMessage = (event: MessageEvent) => {
-            if (resolvedOrRejected) return;
-            resolvedOrRejected = true;
-            clearTimeout(workerTimeout);
-            this.worker?.removeEventListener('message', onMessage);
-            this.worker?.removeEventListener('error', onError);
-
-            const { success, blob, error } = event.data;
-            if (success && blob) {
-              resolve(blob);
-            } else {
-              reject(new Error(error || 'Worker compression failed.'));
-            }
-          };
-
-          const onError = (event: ErrorEvent) => {
-            if (resolvedOrRejected) return;
-            resolvedOrRejected = true;
-            clearTimeout(workerTimeout);
-            this.worker?.removeEventListener('message', onMessage);
-            this.worker?.removeEventListener('error', onError);
-            reject(new Error(`Worker error: ${event.message}`));
-          };
-
-          const workerTimeout = setTimeout(() => {
-            if (resolvedOrRejected) return;
-            resolvedOrRejected = true;
-            this.worker?.removeEventListener('message', onMessage);
-            this.worker?.removeEventListener('error', onError);
-            reject(new Error('Web Worker compression request timed out.'));
-          }, 5000); // 5s safety timeout
-
-          this.worker.addEventListener('message', onMessage);
-          this.worker.addEventListener('error', onError);
-
-          // 5. Post to worker (bitmap is transferred, freeing memory on the main thread)
-          this.worker.postMessage(
-            {
-              imageBitmap,
-              cropX,
-              cropY,
-              cropWidth: cropSize,
-              cropHeight: cropSize,
-              targetWidth,
-              targetHeight
-            },
-            [imageBitmap] // Transferables list
-          );
-        }).catch(err => reject(new Error(`createImageBitmap error: ${err.message}`)));
-      } catch (error) {
-        reject(error);
-      }
+      worker.postMessage(payload, transfer);
     });
   }
 }
