@@ -9,6 +9,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 import { processDecision } from './api/decisionCore.js';
+import { checkRateLimit } from './api/rateLimiter.js';
+import { formatError } from './api/errorHelper.js';
 
 let decisionProxyRequestCount = 0;
 
@@ -56,6 +58,18 @@ app.get('/api/metrics', (req, res) => {
 
 app.post('/api/decision-proxy', async (req, res) => {
   decisionProxyRequestCount++;
+  
+  const ip = (req.headers?.['x-forwarded-for'] || req.ip || '127.0.0.1').toString().split(',')[0].trim();
+  const limitResult = checkRateLimit(ip, 20, 60000);
+  
+  if (!limitResult.allowed) {
+    const retrySeconds = Math.ceil(limitResult.retryAfterMs / 1000);
+    res.setHeader('Retry-After', retrySeconds.toString());
+    return res.status(429).json(
+      formatError('Too Many Requests', `Rate limit exceeded. Please try again in ${retrySeconds} seconds.`)
+    );
+  }
+  
   const result = await processDecision(req.body, 'Google Cloud Run server');
   return res.status(result.status).json(result.data);
 });
