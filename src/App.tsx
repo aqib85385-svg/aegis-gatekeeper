@@ -192,7 +192,7 @@ export const App: React.FC = () => {
 
       {/* Accessible Footer */}
       <footer className="app-footer">
-        <p>© 2026 FIFA World Cup Operations Consultant Group. Powered by Gemini 1.5 Flash.</p>
+        <p>© 2026 FIFA World Cup Operations Consultant Group. Powered by Gemini 2.5 Flash.</p>
       </footer>
     </div>
   );

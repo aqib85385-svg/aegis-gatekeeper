@@ -45,7 +45,7 @@ Standard rule-based check-in systems fail when encountering unstructured physica
              │ (Privacy Payload)
              ▼
     +──────────────────+
-    │  Secure Vercel   │ ── (Hides Credentials, calls Gemini 1.5 Flash API)
+    │  Secure Vercel   │ ── (Hides Credentials, calls Gemini 2.5 Flash API)
     │  API Proxy       │
     +──────────────────+
              │ (JSON Response)
@@ -63,7 +63,7 @@ Standard rule-based check-in systems fail when encountering unstructured physica
 2.  **Deterministic local check:** A local policy engine scans input for security terms (like "gun", "knife", "medical") to bypass the AI and trigger immediate alerts.
 3.  **Privacy-first processing:** Images are cropped to the scan box, grayscaled, and compressed to under 100 KB in a browser Web Worker before upload.
 4.  **Secure routing:** The client sends the payload to `/api/decision-proxy`, a serverless function that handles API key injection.
-5.  **LLM Reasoning:** Gemini 1.5 Flash processes the rules and returns a structured JSON payload.
+5.  **LLM Reasoning:** Gemini 2.5 Flash processes the rules and returns a structured JSON payload.
 6.  **Schema Check & Render:** The app runs a Zod parser schema validation. It updates the UI with an action-first directive card (`ALLOW`, `REVIEW`, or `DENY`) and plays the translated Spanish instructions using the Web Speech API.
 
 ### Deterministic Decision Engine Architecture

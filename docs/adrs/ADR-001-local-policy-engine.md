@@ -1,7 +1,7 @@
 # ADR 001: Local Policy Engine Bypass
 
 ## Context
-High-volume entry turnstiles at sports stadiums (e.g. FIFA World Cup gates) require extremely low-latency processing during security threats (e.g. weapon match) or critical medical incidents. Sending every incident description to a remote Large Language Model (Gemini 1.5 Flash) introduces network latency, processing queue overhead, and dependency on internet uptime.
+High-volume entry turnstiles at sports stadiums (e.g. FIFA World Cup gates) require extremely low-latency processing during security threats (e.g. weapon match) or critical medical incidents. Sending every incident description to a remote Large Language Model (Gemini 2.5 Flash) introduces network latency, processing queue overhead, and dependency on internet uptime.
 
 ## Decision
 We implement a local keyword policy matching engine in `src/services/policyEngine.ts`. This engine runs synchronously on the client side, matching incoming descriptions against predefined emergency and safety keyword configurations prior to making remote API calls.

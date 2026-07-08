@@ -13,7 +13,7 @@ Aegis GateKeeper uses a hybrid client/server design:
 ┌───────────────────────── Secure Server API Gateway ─────────────────────────────────┐
 │  • Vercel serverless function (`api/decision-proxy.ts`)                              │
 │  • Express HTTP Cloud Run listener (`server.js`)                                     │
-│  • Validates Base64 structures and routes requests to Gemini 1.5 Flash API          │
+│  • Validates Base64 structures and routes requests to Gemini 2.5 Flash API          │
 └─────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
