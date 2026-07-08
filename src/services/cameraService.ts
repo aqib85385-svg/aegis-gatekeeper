@@ -2,6 +2,17 @@
  * Service to manage camera access, video streaming, and snapshot frame capturing.
  */
 
+/** Shape of the message posted to the imageCompressor Web Worker. */
+interface WorkerJobPayload {
+  imageBitmap: ImageBitmap;
+  cropX: number;
+  cropY: number;
+  cropWidth: number;
+  cropHeight: number;
+  targetWidth: number;
+  targetHeight: number;
+}
+
 export class CameraService {
   private activeStream: MediaStream | null = null;
   private worker: Worker | null = null;
@@ -57,8 +68,15 @@ export class CameraService {
     }
   }
 
+  /**
+   * Attaches a MediaStream to a video element and starts playback.
+   * Called from both the primary-constraints success path and the fallback-constraints
+   * success path in startCamera(), so the setup sequence lives in exactly one place.
+   * The playsinline and autoplay attributes are required for autoplay on iOS Safari.
+   */
   private async attachStream(videoElement: HTMLVideoElement, stream: MediaStream): Promise<void> {
     videoElement.srcObject = stream;
+    // Force play for iOS devices — without playsinline, Safari on iPhone refuses autoplay
     videoElement.setAttribute('playsinline', 'true');
     videoElement.setAttribute('autoplay', 'true');
     await videoElement.play();
@@ -92,7 +110,7 @@ export class CameraService {
     return createImageBitmap(videoElement)
       .then(imageBitmap => {
         const worker = this.ensureWorker();
-        const payload = {
+        const payload: WorkerJobPayload = {
           imageBitmap,
           ...geometry
         };
@@ -103,7 +121,13 @@ export class CameraService {
       });
   }
 
-  private computeCropGeometry(videoWidth: number, videoHeight: number) {
+  /**
+   * Computes the crop rectangle and output dimensions for a video frame.
+   * Crops to a center square using 70% of the shortest video dimension, then
+   * targets 300×300 px output — small enough for fast upload, large enough for
+   * the Gemini vision model to resolve relevant detail in a bag scan.
+   */
+  private computeCropGeometry(videoWidth: number, videoHeight: number): Omit<WorkerJobPayload, 'imageBitmap'> {
     const cropSize = Math.floor(Math.min(videoWidth, videoHeight) * 0.70);
     const cropX = Math.floor((videoWidth - cropSize) / 2);
     const cropY = Math.floor((videoHeight - cropSize) / 2);
@@ -117,6 +141,11 @@ export class CameraService {
     };
   }
 
+  /**
+   * Lazily initialises the imageCompressor Web Worker on first call and returns it.
+   * A single persistent worker is reused across captures to avoid the overhead of
+   * spawning a new thread for every frame.
+   */
   private ensureWorker(): Worker {
     if (!this.worker) {
       this.worker = new Worker(
@@ -127,7 +156,13 @@ export class CameraService {
     return this.worker;
   }
 
-  private runWorkerJob(worker: Worker, payload: any, transfer: Transferable[]): Promise<Blob> {
+  /**
+   * Posts a job to the imageCompressor worker and returns a Promise<Blob>.
+   * Owns the message / error / timeout race so listener cleanup lives in one
+   * place (the cleanup() closure) instead of being repeated across three callbacks.
+   * The 5-second timeout guards against a hung worker silently blocking the UI.
+   */
+  private runWorkerJob(worker: Worker, payload: WorkerJobPayload, transfer: Transferable[]): Promise<Blob> {
     return new Promise((resolve, reject) => {
       let resolvedOrRejected = false;
 
